@@ -67,20 +67,50 @@ class VoiceConverter:
 
     @staticmethod
     def convert_audio_format(input_path, output_path, output_format):
-        # soundfile expects format names like 'WAV', 'FLAC' (usually uppercase)
+        # Use pydub/ffmpeg to support formats like mp3. Fallback to soundfile WAV if conversion fails.
         base, _ = os.path.splitext(output_path)
         out_path = output_path
-        if output_format.upper() == "WAV":
-            out_path = output_path
-        audio, sr = librosa.load(input_path, sr=None)
+        fmt = (output_format or "").lower()
+
+        # If target is WAV, just return the WAV path (ensure proper extension)
+        if fmt == "wav":
+            return out_path
+
+        # Try pydub if available (uses ffmpeg/avlib underneath)
         try:
-            sf.write(out_path, audio, sr, format=output_format.upper())
+            from pydub import AudioSegment
+
+            audio_seg = AudioSegment.from_file(input_path)
+            audio_seg.export(out_path, format=fmt)
             return out_path
         except Exception:
-            # Fallback: write as WAV then return that path
+            pass
+
+        # Try ffmpeg CLI if available
+        try:
+            import subprocess
+
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-i",
+                input_path,
+                out_path,
+            ]
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return out_path
+        except Exception:
+            pass
+
+        # Fallback: write WAV using soundfile and return WAV path
+        try:
+            audio, sr = librosa.load(input_path, sr=None)
             wav_path = f"{base}.wav"
             sf.write(wav_path, audio, sr, format="WAV")
             return wav_path
+        except Exception:
+            # As last resort, return the original input_path
+            return input_path
 
     @staticmethod
     def post_process_audio(audio_input, sample_rate, **kwargs):
@@ -200,11 +230,10 @@ class VoiceConverter:
 
             final_output = wav_out
             if export_format and export_format.upper() != "WAV":
-                final_output = self.convert_audio_format(
-                    wav_out,
-                    f"{base_out}.{export_format.lower()}",
-                    export_format,
-                )
+                # attempt to convert to requested format (e.g., mp3)
+                target_out = f"{base_out}.{export_format.lower()}"
+                converted = self.convert_audio_format(wav_out, target_out, export_format)
+                final_output = converted or wav_out
 
             logging.info(
                 f"Done in {time.time() - start_time:.2f}s → {final_output}"
