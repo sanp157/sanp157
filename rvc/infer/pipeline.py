@@ -29,33 +29,39 @@ bh, ah = signal.butter(
 class AudioProcessor:
     @staticmethod
     def change_rms(source_audio, source_rate, target_audio, target_rate, rate):
+        # Ensure frame_length does not exceed audio length, and is at least 2
+        frame_length1 = min(len(source_audio), max(2, int(source_rate)))
+        hop_length1 = max(1, frame_length1 // 2)
+        frame_length2 = min(len(target_audio), max(2, int(target_rate)))
+        hop_length2 = max(1, frame_length2 // 2)
+
         rms1 = librosa.feature.rms(
             y=source_audio,
-            frame_length=source_rate // 2 * 2,
-            hop_length=source_rate // 2,
+            frame_length=frame_length1,
+            hop_length=hop_length1,
         )
         rms2 = librosa.feature.rms(
             y=target_audio,
-            frame_length=target_rate // 2 * 2,
-            hop_length=target_rate // 2,
+            frame_length=frame_length2,
+            hop_length=hop_length2,
         )
 
-        rms1 = F.interpolate(
-            torch.from_numpy(rms1).float().unsqueeze(0),
-            size=target_audio.shape[0],
-            mode="linear",
-        ).squeeze()
-        rms2 = F.interpolate(
-            torch.from_numpy(rms2).float().unsqueeze(0),
-            size=target_audio.shape[0],
-            mode="linear",
-        ).squeeze()
-        rms2 = torch.maximum(rms2, torch.zeros_like(rms2) + 1e-6)
+        # Prepare tensors for interpolation: (N, C, L) expected for linear mode
+        rms1_t = torch.from_numpy(rms1).float().unsqueeze(0).unsqueeze(0)
+        rms2_t = torch.from_numpy(rms2).float().unsqueeze(0).unsqueeze(0)
 
-        return (
-            target_audio
-            * (torch.pow(rms1, 1 - rate) * torch.pow(rms2, rate - 1)).numpy()
-        )
+        # Interpolate to per-sample envelope length (target_audio length)
+        rms1_i = F.interpolate(
+            rms1_t, size=target_audio.shape[0], mode="linear", align_corners=False
+        ).squeeze()
+        rms2_i = F.interpolate(
+            rms2_t, size=target_audio.shape[0], mode="linear", align_corners=False
+        ).squeeze()
+
+        rms2_i = torch.maximum(rms2_i, torch.zeros_like(rms2_i) + 1e-6)
+
+        factor = (torch.pow(rms1_i, 1 - rate) * torch.pow(rms2_i, rate - 1)).numpy()
+        return target_audio * factor
 
 
 class Pipeline:
@@ -174,8 +180,13 @@ class Pipeline:
             pitch = None
             pitchf = None
 
+        # Ensure model receives a torch tensor on the correct device with batch dim
+        audio_input = torch.from_numpy(audio_pad).float().unsqueeze(0).to(self.device)
+
         with torch.no_grad():
-            feats = model(audio_pad)["last_hidden_state"]
+            feats = model(audio_input)["last_hidden_state"]
+
+            # net_g.infer expects tensors on the device; p_len and sid already on device
             audio_out = (
                 net_g.infer(
                     feats,
