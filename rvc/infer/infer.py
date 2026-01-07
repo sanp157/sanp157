@@ -1,6 +1,5 @@
 import os
 import sys
-import soxr
 import time
 import torch
 import librosa
@@ -24,7 +23,9 @@ from pedalboard import (
 )
 
 now_dir = os.getcwd()
-sys.path.append(now_dir)
+# Keep current working directory on sys.path only if necessary for local imports
+if now_dir not in sys.path:
+    sys.path.append(now_dir)
 
 from rvc.infer.pipeline import Pipeline as VC
 from rvc.lib.utils import load_audio_infer, load_embedding
@@ -66,11 +67,20 @@ class VoiceConverter:
 
     @staticmethod
     def convert_audio_format(input_path, output_path, output_format):
+        # soundfile expects format names like 'WAV', 'FLAC' (usually uppercase)
+        base, _ = os.path.splitext(output_path)
+        out_path = output_path
         if output_format.upper() == "WAV":
-            return output_path
+            out_path = output_path
         audio, sr = librosa.load(input_path, sr=None)
-        sf.write(output_path, audio, sr, format=output_format.lower())
-        return output_path
+        try:
+            sf.write(out_path, audio, sr, format=output_format.upper())
+            return out_path
+        except Exception:
+            # Fallback: write as WAV then return that path
+            wav_path = f"{base}.wav"
+            sf.write(wav_path, audio, sr, format="WAV")
+            return wav_path
 
     @staticmethod
     def post_process_audio(audio_input, sample_rate, **kwargs):
@@ -126,11 +136,13 @@ class VoiceConverter:
             if audio_max > 1:
                 audio /= audio_max
 
-            if not self.hubert_model or embedder_model != self.last_embedder_model:
+            # reload hubert if embedder changed (include custom path in comparison)
+            embedder_key = (embedder_model, embedder_model_custom)
+            if not self.hubert_model or embedder_key != self.last_embedder_model:
                 self.load_hubert(embedder_model, embedder_model_custom)
-                self.last_embedder_model = embedder_model
+                self.last_embedder_model = embedder_key
 
-            file_index = index_path.strip().replace("trained", "added")
+            file_index = (index_path or "").strip().replace("trained", "added")
 
             # LOCK target SR to model native SR (40k)
             self.tgt_sr = self.cpt["config"][-1]
@@ -181,21 +193,24 @@ class VoiceConverter:
                     **kwargs,
                 )
 
-            sf.write(audio_output_path, audio_opt, self.tgt_sr, format="WAV")
+            # ensure proper extension and format when writing
+            base_out, _ = os.path.splitext(audio_output_path)
+            wav_out = f"{base_out}.wav"
+            sf.write(wav_out, audio_opt, self.tgt_sr, format="WAV")
 
-            if export_format.upper() != "WAV":
-                audio_output_path = self.convert_audio_format(
-                    audio_output_path,
-                    audio_output_path.replace(".wav", f".{export_format.lower()}"),
+            final_output = wav_out
+            if export_format and export_format.upper() != "WAV":
+                final_output = self.convert_audio_format(
+                    wav_out,
+                    f"{base_out}.{export_format.lower()}",
                     export_format,
                 )
 
-            print(
-                f"Done in {time.time() - start_time:.2f}s → {audio_output_path}"
+            logging.info(
+                f"Done in {time.time() - start_time:.2f}s → {final_output}"
             )
         except Exception as e:
-            print(e)
-            print(traceback.format_exc())
+            logging.exception("Error during conversion: %s", e)
 
     def get_vc(self, weight_root, sid):
         if not self.loaded_model or self.loaded_model != weight_root:
@@ -206,11 +221,14 @@ class VoiceConverter:
                 self.loaded_model = weight_root
 
     def load_model(self, weight_root):
-        self.cpt = (
-            torch.load(weight_root, map_location="cpu", weights_only=True)
-            if os.path.isfile(weight_root)
-            else None
-        )
+        if not os.path.isfile(weight_root):
+            self.cpt = None
+            return
+        # torch.load in newer PyTorch supports weights_only; fall back for older versions
+        try:
+            self.cpt = torch.load(weight_root, map_location="cpu", weights_only=True)
+        except TypeError:
+            self.cpt = torch.load(weight_root, map_location="cpu")
 
     def setup_network(self):
         self.tgt_sr = self.cpt["config"][-1]   # 40000
@@ -225,7 +243,9 @@ class VoiceConverter:
             text_enc_hidden_dim=text_enc_hidden_dim,
             vocoder=self.cpt.get("vocoder", "HiFi-GAN"),
         )
-        del self.net_g.enc_q
+        # remove enc_q only if present
+        if hasattr(self.net_g, "enc_q"):
+            del self.net_g.enc_q
         self.net_g.load_state_dict(self.cpt["weight"], strict=False)
         self.net_g = self.net_g.to(self.config.device).float()
         self.net_g.eval()
