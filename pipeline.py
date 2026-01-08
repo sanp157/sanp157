@@ -14,6 +14,7 @@ if now_dir not in sys.path:
 from rvc.lib.predictors.f0 import CREPE, FCPE, RMVPE
 
 import logging
+
 logging.getLogger("faiss").setLevel(logging.WARNING)
 
 FILTER_ORDER = 5

@@ -20,6 +20,7 @@ except Exception:
     Autotune = None
 
 import logging
+
 logging.getLogger("faiss").setLevel(logging.WARNING)
 
 FILTER_ORDER = 5

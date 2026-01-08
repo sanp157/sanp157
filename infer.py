@@ -147,15 +147,15 @@ class VoiceConverter:
                     net_g=self.net_g,
                     sid=sid,
                     audio=c,
-                    pitch=0,                    # HARD LOCK (no pitch forcing)
-                    f0_method="rmvpe",           # LOCK to RMVPE
+                    pitch=0,  # HARD LOCK (no pitch forcing)
+                    f0_method="rmvpe",  # LOCK to RMVPE
                     file_index=file_index,
-                    index_rate=index_rate,       # SAFE default
-                    pitch_guidance=False,        # CRITICAL FIX
+                    index_rate=index_rate,  # SAFE default
+                    pitch_guidance=False,  # CRITICAL FIX
                     volume_envelope=volume_envelope,
                     version=self.version,
                     protect=protect,
-                    f0_autotune=False,           # DISABLED
+                    f0_autotune=False,  # DISABLED
                     f0_autotune_strength=0,
                     proposed_pitch=False,
                     proposed_pitch_threshold=proposed_pitch_threshold,
@@ -190,9 +190,7 @@ class VoiceConverter:
                     export_format,
                 )
 
-            print(
-                f"Done in {time.time() - start_time:.2f}s → {audio_output_path}"
-            )
+            print(f"Done in {time.time() - start_time:.2f}s → {audio_output_path}")
         except Exception as e:
             print(e)
             print(traceback.format_exc())
@@ -213,7 +211,7 @@ class VoiceConverter:
         )
 
     def setup_network(self):
-        self.tgt_sr = self.cpt["config"][-1]   # 40000
+        self.tgt_sr = self.cpt["config"][-1]  # 40000
         self.cpt["config"][-3] = self.cpt["weight"]["emb_g.weight"].shape[0]
         self.use_f0 = self.cpt.get("f0", 1)
         self.version = self.cpt.get("version", "v2")

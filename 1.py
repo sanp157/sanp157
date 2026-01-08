@@ -1,4 +1,3 @@
-import os
 import torch
 import librosa
 import numpy as np
@@ -13,8 +12,9 @@ OUTPUT_AUDIO = "output.wav"
 
 SAMPLE_RATE = 16000
 TARGET_SR = 40000
-F0_METHOD = "rmvpe"   # "rmvpe", "pm"
+F0_METHOD = "rmvpe"  # "rmvpe", "pm"
 USE_F0 = True
+
 
 # -------------------------------------------------
 # LOAD AUDIO
@@ -22,6 +22,7 @@ USE_F0 = True
 def load_audio(path):
     audio, _ = librosa.load(path, sr=SAMPLE_RATE, mono=True)
     return audio
+
 
 # -------------------------------------------------
 # LOAD MODEL (PURE TORCH)
@@ -31,6 +32,7 @@ def load_model(model_path, device):
     model = ckpt["model"] if isinstance(ckpt, dict) and "model" in ckpt else ckpt
     model.eval()
     return model
+
 
 # -------------------------------------------------
 # SIMPLE INFERENCE (NO PIPELINE, NO AUTORUN)
@@ -48,6 +50,7 @@ def infer(model, audio, device):
 
     out = out.squeeze().cpu().numpy()
     return out
+
 
 # -------------------------------------------------
 # MAIN
@@ -68,6 +71,7 @@ def main():
     sf.write(OUTPUT_AUDIO, audio_out, TARGET_SR)
 
     print(f"[OK] Done → {OUTPUT_AUDIO}")
+
 
 # -------------------------------------------------
 # ENTRY

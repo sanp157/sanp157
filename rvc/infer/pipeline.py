@@ -15,6 +15,7 @@ if now_dir not in sys.path:
 from rvc.lib.predictors.f0 import CREPE, FCPE, RMVPE
 
 import logging
+
 logging.getLogger("faiss").setLevel(logging.WARNING)
 
 FILTER_ORDER = 5
@@ -60,7 +61,11 @@ class AudioProcessor:
         rms2_i = torch.maximum(rms2_i, torch.zeros_like(rms2_i) + eps)
 
         rate = float(rate)
-        factor = (torch.pow(rms1_i, 1.0 - rate) * torch.pow(rms2_i, rate - 1.0)).cpu().numpy()
+        factor = (
+            (torch.pow(rms1_i, 1.0 - rate) * torch.pow(rms2_i, rate - 1.0))
+            .cpu()
+            .numpy()
+        )
         return target_audio * factor
 
 

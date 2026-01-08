@@ -4,7 +4,6 @@ import time
 import torch
 import librosa
 import logging
-import traceback
 import numpy as np
 import soundfile as sf
 import noisereduce as nr
@@ -97,7 +96,9 @@ class VoiceConverter:
                 input_path,
                 out_path,
             ]
-            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(
+                cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
             return out_path
         except Exception:
             pass
@@ -189,15 +190,15 @@ class VoiceConverter:
                     net_g=self.net_g,
                     sid=sid,
                     audio=c,
-                    pitch=0,                    # HARD LOCK (no pitch forcing)
-                    f0_method="rmvpe",           # LOCK to RMVPE
+                    pitch=0,  # HARD LOCK (no pitch forcing)
+                    f0_method="rmvpe",  # LOCK to RMVPE
                     file_index=file_index,
-                    index_rate=index_rate,       # SAFE default
-                    pitch_guidance=False,        # CRITICAL FIX
+                    index_rate=index_rate,  # SAFE default
+                    pitch_guidance=False,  # CRITICAL FIX
                     volume_envelope=volume_envelope,
                     version=self.version,
                     protect=protect,
-                    f0_autotune=False,           # DISABLED
+                    f0_autotune=False,  # DISABLED
                     f0_autotune_strength=0,
                     proposed_pitch=False,
                     proposed_pitch_threshold=proposed_pitch_threshold,
@@ -232,12 +233,12 @@ class VoiceConverter:
             if export_format and export_format.upper() != "WAV":
                 # attempt to convert to requested format (e.g., mp3)
                 target_out = f"{base_out}.{export_format.lower()}"
-                converted = self.convert_audio_format(wav_out, target_out, export_format)
+                converted = self.convert_audio_format(
+                    wav_out, target_out, export_format
+                )
                 final_output = converted or wav_out
 
-            logging.info(
-                f"Done in {time.time() - start_time:.2f}s → {final_output}"
-            )
+            logging.info(f"Done in {time.time() - start_time:.2f}s → {final_output}")
         except Exception as e:
             logging.exception("Error during conversion: %s", e)
 
@@ -260,7 +261,7 @@ class VoiceConverter:
             self.cpt = torch.load(weight_root, map_location="cpu")
 
     def setup_network(self):
-        self.tgt_sr = self.cpt["config"][-1]   # 40000
+        self.tgt_sr = self.cpt["config"][-1]  # 40000
         self.cpt["config"][-3] = self.cpt["weight"]["emb_g.weight"].shape[0]
         self.use_f0 = self.cpt.get("f0", 1)
         self.version = self.cpt.get("version", "v2")
